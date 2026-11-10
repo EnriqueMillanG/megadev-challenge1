@@ -39,7 +39,14 @@ async function connect(base) {
   const state = b64(crypto.randomBytes(32));
   const u = new URL(asMeta.authorization_endpoint);
   Object.entries({ response_type: 'code', client_id: reg.json.client_id, redirect_uri: redirect, code_challenge: challenge, code_challenge_method: 'S256', state, resource: prm.resource }).forEach(([k, v]) => u.searchParams.set(k, v));
+  save({ pending: { base, verifier, state, client_id: reg.json.client_id, redirect, resource: prm.resource, token_endpoint: asMeta.token_endpoint } });
   console.log(`Open this link, enter the owner password and press Approve:\n${u.href}\n`);
+  await finish();
+}
+
+// Waits for approval and exchanges the code. Re-run it alone if the wait was interrupted.
+async function finish() {
+  const { base, verifier, state, client_id, redirect, resource, token_endpoint } = load().pending;
   let got;
   for (let i = 0; i < 180 && !got; i++) {
     const r = await post(`${base}/oauth/relay/poll`, { state });
@@ -47,9 +54,9 @@ async function connect(base) {
   }
   if (!got) throw new Error('Timed out waiting for approval (15 minutes).');
   if (!got.code) throw new Error(`Not approved: ${got.error}`);
-  const tok = await post(asMeta.token_endpoint, { grant_type: 'authorization_code', code: got.code, code_verifier: verifier, client_id: reg.json.client_id, redirect_uri: redirect, resource: prm.resource }, true);
+  const tok = await post(token_endpoint, { grant_type: 'authorization_code', code: got.code, code_verifier: verifier, client_id, redirect_uri: redirect, resource }, true);
   if (tok.status >= 300) throw new Error(`token: ${tok.status} ${JSON.stringify(tok.json)}`);
-  save({ server: prm.resource, token_endpoint: asMeta.token_endpoint, client_id: reg.json.client_id, ...tok.json, obtained_at: Date.now() });
+  save({ server: resource, token_endpoint, client_id, ...tok.json, obtained_at: Date.now() });
   console.log(`Connected. Credentials saved to ${FILE}`);
 }
 
@@ -74,6 +81,7 @@ async function client() {
 const [cmd, a, b] = process.argv.slice(2);
 try {
   if (cmd === 'connect') await connect(a);
+  else if (cmd === 'finish') await finish();
   else if (cmd === 'tools') { const cl = await client(); console.log(JSON.stringify((await cl.listTools()).tools, null, 2)); await cl.close(); }
   else if (cmd === 'call') { const cl = await client(); const r = await cl.callTool({ name: a, arguments: JSON.parse(b || '{}') }, undefined, { timeout: 900_000 }); console.log(JSON.stringify(r, null, 2)); await cl.close(); }
   else { console.error('usage: client.mjs connect <base-url> | tools | call <tool> <json>'); process.exit(2); }
