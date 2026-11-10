@@ -64,7 +64,10 @@ export function createAuth({ store, baseUrl, resourceUrl }) {
         expiresAt: now() + PENDING_TTL,
       });
       res.set('Cache-Control', 'no-store');
-      res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'");
+      // form-action also governs where the form's redirect may go, so it must allow the client's redirect origin.
+      const ru = new URL(params.redirectUri);
+      const back = ru.origin !== 'null' ? ru.origin : ru.protocol;
+      res.set('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${back}; frame-ancestors 'none'`);
       res.status(200).type('html').send(consentPage({ id, client, redirectUri: params.redirectUri }));
     },
 
