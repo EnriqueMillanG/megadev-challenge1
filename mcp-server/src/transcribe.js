@@ -29,7 +29,7 @@ async function doTranscribe(audio) {
       await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', input, '-t', String(MAX_SECONDS), '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', wav], { timeout: 120_000 });
     } catch (e) { throw Object.assign(new Error('not audio'), { notAudio: true, stderr: e.stderr }); }
     const threads = String(Math.max(1, Number(process.env.WHISPER_THREADS || 0) || (await import('node:os')).availableParallelism()));
-    await run(WHISPER_BIN, ['-m', WHISPER_MODEL, '-f', wav, '-l', WHISPER_LANG, '-t', threads, '-oj', '-of', out, '-np'], { timeout: 900_000, maxBuffer: 64 * 1024 * 1024 });
+    await run(WHISPER_BIN, ['-m', WHISPER_MODEL, '-f', wav, '-l', WHISPER_LANG, '-t', threads, '-bs', '1', '-bo', '1', '-oj', '-of', out, '-np'], { timeout: 900_000, maxBuffer: 64 * 1024 * 1024 });
     const json = JSON.parse(await readFile(out + '.json', 'utf8'));
     const segments = (json.transcription || [])
       .map((s) => ({

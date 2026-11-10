@@ -52,8 +52,8 @@ gcloud projects add-iam-policy-binding "$PROJECT" --condition=None \
 echo "== Deploy $SERVICE -> $URL (builds whisper.cpp; the first build takes ~10 minutes)"
 gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --source . \
   --service-account "$RUN_SA" --allow-unauthenticated \
-  --cpu 2 --memory 2Gi --max-instances 1 --concurrency 20 --timeout 900 \
-  --set-env-vars "PUBLIC_URL=${URL},BUCKET=${BUCKET},WHISPER_THREADS=2" \
+  --cpu 4 --memory 4Gi --max-instances 1 --concurrency 20 --timeout 900 \
+  --set-env-vars "PUBLIC_URL=${URL},BUCKET=${BUCKET},WHISPER_THREADS=4" \
   --set-secrets "OWNER_PASSWORD=${SECRET}:latest"
 
 echo
