@@ -202,10 +202,13 @@ const bearer = requireBearerAuth({
 });
 
 // MCP 2026-07-28 (server/discover, per-request envelope) plus stateless fallback for 2025-era clients.
+// Uploads travel base64 inside the JSON body, so the body limit follows MAX_UPLOAD (SDK default is 4 MB).
+const MAX_BODY = Math.ceil(MAX_UPLOAD * 1.4) + 65536;
 const mcpHandler = toNodeHandler(createMcpHandler(() => buildMcp(), {
   onerror: (e) => console.error('mcp error', e),
-}), { onerror: (e) => console.error('mcp adapter error', e) });
-const jsonBody = express.json({ limit: Math.ceil(MAX_UPLOAD * 1.4) + 65536 });
+  maxRequestBodySize: MAX_BODY,
+}), { onerror: (e) => console.error('mcp adapter error', e), maxRequestBodySize: MAX_BODY });
+const jsonBody = express.json({ limit: MAX_BODY });
 app.post('/mcp', bearer, jsonBody, (req, res) => mcpHandler(req, res, req.body));
 app.get('/mcp', bearer, (req, res) => mcpHandler(req, res));
 app.delete('/mcp', bearer, (req, res) => mcpHandler(req, res));

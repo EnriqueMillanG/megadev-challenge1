@@ -2,7 +2,7 @@
 // Owner's command-line client for this server.
 //   node scripts/client.mjs connect <server-base-url>   register, print the consent link, wait for approval
 //   node scripts/client.mjs tools                      list tools
-//   node scripts/client.mjs call <tool> '<json args>'  call a tool
+//   node scripts/client.mjs call <tool> '<json args>'  call a tool (or @file.json for large args)
 // Credentials go to $MCP_CLIENT_FILE (default ~/.config/schema-first/client.json). Never commit that file.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -83,6 +83,6 @@ try {
   if (cmd === 'connect') await connect(a);
   else if (cmd === 'finish') await finish();
   else if (cmd === 'tools') { const cl = await client(); console.log(JSON.stringify((await cl.listTools()).tools, null, 2)); await cl.close(); }
-  else if (cmd === 'call') { const cl = await client(); const r = await cl.callTool({ name: a, arguments: JSON.parse(b || '{}') }, undefined, { timeout: 900_000 }); console.log(JSON.stringify(r, null, 2)); await cl.close(); }
+  else if (cmd === 'call') { const cl = await client(); const r = await cl.callTool({ name: a, arguments: JSON.parse(b?.startsWith('@') ? fs.readFileSync(b.slice(1), 'utf8') : (b || '{}')) }, undefined, { timeout: 900_000 }); console.log(JSON.stringify(r, null, 2)); await cl.close(); }
   else { console.error('usage: client.mjs connect <base-url> | tools | call <tool> <json>'); process.exit(2); }
 } catch (e) { console.error(String(e.message || e)); process.exit(1); }
