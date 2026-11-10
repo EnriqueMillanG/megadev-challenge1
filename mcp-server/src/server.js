@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
+import { toNodeHandler } from '@modelcontextprotocol/node';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { createStore, withLock } from './store.js';
@@ -40,8 +40,8 @@ function buildMcp() {
   mcp.registerTool('memo_write', {
     title: 'Write a note',
     description: 'Saves a note on this server. Returns its id.',
-    inputSchema: { text: z.string().min(1).max(20000).describe('The note.') },
-    outputSchema: { id: z.string() },
+    inputSchema: z.object({ text: z.string().min(1).max(20000).describe('The note.') }),
+    outputSchema: z.object({ id: z.string() }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ text }) => {
     const note = { id: crypto.randomUUID(), text, created_at: new Date().toISOString() };
@@ -56,11 +56,11 @@ function buildMcp() {
   mcp.registerTool('memo_search', {
     title: 'Search notes',
     description: 'Finds saved notes whose text contains every word of the query (case-insensitive). An empty query returns every note. Newest first.',
-    inputSchema: {
+    inputSchema: z.object({
       query: z.string().max(500).optional().default('').describe('Words to look for. Empty for every note.'),
       limit: z.number().int().min(1).max(500).optional().default(100).describe('Most notes to return.'),
-    },
-    outputSchema: { notes: z.array(Note) },
+    }),
+    outputSchema: z.object({ notes: z.array(Note) }),
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ query, limit }) => {
     const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -74,14 +74,14 @@ function buildMcp() {
   mcp.registerTool('upload', {
     title: 'Upload a file',
     description: 'Puts a file on this server and returns a public link that anyone can open. Give the file as content_base64, as text, or as a url to copy from.',
-    inputSchema: {
+    inputSchema: z.object({
       filename: z.string().min(1).max(200).describe('File name, e.g. "notes.txt".'),
       content_base64: z.string().optional().describe('The file bytes, base64-encoded.'),
       text: z.string().optional().describe('The file as UTF-8 text, instead of content_base64.'),
       url: z.string().url().optional().describe('A public http(s) URL to copy the file from, instead of content_base64 or text.'),
       content_type: z.string().max(200).optional().describe('MIME type. Guessed from the source when left out.'),
-    },
-    outputSchema: { url: z.string().url(), id: z.string(), size: z.number().int(), content_type: z.string() },
+    }),
+    outputSchema: z.object({ url: z.string().url(), id: z.string(), size: z.number().int(), content_type: z.string() }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   }, async (args) => {
     const given = ['content_base64', 'text', 'url'].filter((k) => args[k] !== undefined);
@@ -104,8 +104,8 @@ function buildMcp() {
   mcp.registerTool('transcribe', {
     title: 'Transcribe audio',
     description: 'Turns the audio (or video) at a URL into timestamped text. Each segment has its start and end in seconds from the start of the clip. Runs whisper.cpp on this server.',
-    inputSchema: { url: z.string().url().describe('Public http(s) URL of the audio or video, or a link from upload.') },
-    outputSchema: { segments: z.array(Segment), duration: z.number().describe('Length of the audio in seconds.'), language: z.string() },
+    inputSchema: z.object({ url: z.string().url().describe('Public http(s) URL of the audio or video, or a link from upload.') }),
+    outputSchema: z.object({ segments: z.array(Segment), duration: z.number().describe('Length of the audio in seconds.'), language: z.string() }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
     let audio;
@@ -184,22 +184,14 @@ const bearer = requireBearerAuth({
   expectedResource: MCP_URL,
 });
 
-// Stateless Streamable HTTP: a fresh server and transport per request.
-app.post('/mcp', bearer, express.json({ limit: Math.ceil(MAX_UPLOAD * 1.4) + 65536 }), async (req, res) => {
-  const mcp = buildMcp();
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-  res.on('close', () => { transport.close(); mcp.close(); });
-  try {
-    await mcp.connect(transport);
-    await transport.handleRequest(req, res, req.body);
-  } catch (e) {
-    console.error('mcp error', e);
-    if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null });
-  }
-});
-const noStream = (req, res) => res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed: this server is stateless, use POST.' }, id: null });
-app.get('/mcp', bearer, noStream);
-app.delete('/mcp', bearer, noStream);
+// MCP 2026-07-28 (server/discover, per-request envelope) plus stateless fallback for 2025-era clients.
+const mcpHandler = toNodeHandler(createMcpHandler(() => buildMcp(), {
+  onerror: (e) => console.error('mcp error', e),
+}), { onerror: (e) => console.error('mcp adapter error', e) });
+const jsonBody = express.json({ limit: Math.ceil(MAX_UPLOAD * 1.4) + 65536 });
+app.post('/mcp', bearer, jsonBody, (req, res) => mcpHandler(req, res, req.body));
+app.get('/mcp', bearer, (req, res) => mcpHandler(req, res));
+app.delete('/mcp', bearer, (req, res) => mcpHandler(req, res));
 
 app.use((err, req, res, next) => {
   console.error(err);

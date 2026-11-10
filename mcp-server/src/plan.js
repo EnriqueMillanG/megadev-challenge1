@@ -3,7 +3,7 @@ import { page, esc } from './html.js';
 export function planPage({ base, mcp }) {
   return page('schema-first — plan', `
 <p>A personal remote MCP server. One home for four tools any MCP client can reach once its owner lets it in.</p>
-<p>Endpoint: <code>${esc(mcp)}</code> — Streamable HTTP, MCP revision <code>2025-11-25</code> (older revisions back to <code>2025-03-26</code> are accepted). Stateless: every call is a POST; there is no session and no server-sent stream.</p>
+<p>Endpoint: <code>${esc(mcp)}</code> — Streamable HTTP, MCP revision <code>2026-07-28</code> (<code>server/discover</code>, per-request envelope), with a stateless fallback for 2025-era clients that start with <code>initialize</code>. No sessions.</p>
 
 <h2>Tools</h2>
 <table>

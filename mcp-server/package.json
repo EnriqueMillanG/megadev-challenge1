@@ -10,7 +10,9 @@
   "license": "MIT",
   "dependencies": {
     "@google-cloud/storage": "^8.4.0",
+    "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@modelcontextprotocol/server": "^2.4.0",
     "express": "^5.3.0",
     "zod": "^4.6.7"
   },

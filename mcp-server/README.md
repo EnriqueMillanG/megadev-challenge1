@@ -11,7 +11,7 @@ A personal remote MCP server: one home for my tools, reachable by any MCP client
 
 Every result is `structuredContent` matching the tool's `outputSchema`.
 
-- MCP revision 2025-11-25 over Streamable HTTP (stateless POST), via the official TypeScript SDK.
+- MCP revision 2026-07-28 (`server/discover`) over Streamable HTTP, with a stateless fallback for 2025-era clients, via the official TypeScript SDK v2.
 - OAuth 2.1 authorization server built in: dynamic client registration, PKCE, refresh tokens,
   protected resource metadata whose `resource_documentation` is the `/plan` page. The owner
   approves each client on a consent page with the owner password.
