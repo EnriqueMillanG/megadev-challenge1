@@ -129,7 +129,7 @@ export function createAuth({ store, baseUrl, resourceUrl }) {
       return res.redirect(302, back.href);
     }
 
-    const owner = process.env.OWNER_PASSWORD;
+    const owner = process.env.OWNER_PASSWORD?.trim();
     if (!owner || !sameSecret(req.body?.password ?? '', owner)) {
       const n = (f?.n ?? 0) + 1;
       failed.set(ip, { n, until: n >= 5 ? Date.now() + 15 * 60_000 : 0 });

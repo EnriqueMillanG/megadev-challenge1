@@ -29,7 +29,7 @@ fi
 
 echo "== Owner password (Secret Manager: $SECRET)"
 if ! gcloud secrets describe "$SECRET" --project "$PROJECT" >/dev/null 2>&1; then
-  head -c 18 /dev/urandom | base64 | tr -d '/+=' | gcloud secrets create "$SECRET" --project "$PROJECT" \
+  head -c 18 /dev/urandom | base64 | tr -d '/+=\n' | gcloud secrets create "$SECRET" --project "$PROJECT" \
     --replication-policy automatic --data-file=-
   NEW_PASSWORD=1
 fi
