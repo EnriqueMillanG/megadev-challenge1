@@ -25,7 +25,7 @@ function safeLookup(hostname, options, cb) {
   dns.lookup(hostname, { ...options, all: true }, (err, addrs) => {
     if (err) return cb(err);
     const ok = addrs.filter((a) => !isBlockedAddress(a.address));
-    if (!ok.length) return cb(Object.assign(new Error(`Address of ${hostname} is not public`), { code: 'EBLOCKED' }));
+    if (!ok.length) return cb(Object.assign(new Error(`${hostname} resolves to a private address, not a public one`), { code: 'EBLOCKED' }));
     if (options.all) return cb(null, ok);
     cb(null, ok[0].address, ok[0].family);
   });
@@ -34,12 +34,12 @@ function safeLookup(hostname, options, cb) {
 export async function fetchPublic(url, { maxBytes = 50 * 1024 * 1024, redirects = 5, timeoutMs = 60_000 } = {}) {
   let u = new URL(url);
   for (let hop = 0; hop <= redirects; hop++) {
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('Only http and https URLs are allowed');
-    if (net.isIP(u.hostname.replace(/^\[|\]$/g, '')) && isBlockedAddress(u.hostname.replace(/^\[|\]$/g, ''))) throw new Error('That address is not public');
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('only public http and https URLs are allowed');
+    if (net.isIP(u.hostname.replace(/^\[|\]$/g, '')) && isBlockedAddress(u.hostname.replace(/^\[|\]$/g, ''))) throw new Error('that address is private, not public');
     const res = await new Promise((resolve, reject) => {
       const mod = u.protocol === 'https:' ? https : http;
       const req = mod.get(u, { lookup: safeLookup, timeout: timeoutMs, headers: { 'user-agent': 'mcp-schema-first/1.0' } }, resolve);
-      req.on('timeout', () => req.destroy(new Error('Download timed out')));
+      req.on('timeout', () => req.destroy(new Error('the download timed out')));
       req.on('error', reject);
     });
     if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
@@ -47,14 +47,14 @@ export async function fetchPublic(url, { maxBytes = 50 * 1024 * 1024, redirects 
       u = new URL(res.headers.location, u);
       continue;
     }
-    if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); throw new Error(`Download failed: HTTP ${res.statusCode}`); }
+    if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); throw new Error(`the server answered HTTP ${res.statusCode}${res.statusCode === 404 ? ' (not found: no file at that address)' : res.statusCode === 401 || res.statusCode === 403 ? ' (not public: access denied)' : ''}`); }
     const chunks = []; let size = 0;
     for await (const c of res) {
       size += c.length;
-      if (size > maxBytes) { res.destroy(); throw new Error(`File is larger than ${maxBytes} bytes`); }
+      if (size > maxBytes) { res.destroy(); throw new Error(`the file is larger than ${maxBytes} bytes`); }
       chunks.push(c);
     }
     return { data: Buffer.concat(chunks), contentType: res.headers['content-type'] || 'application/octet-stream', finalUrl: u.href };
   }
-  throw new Error('Too many redirects');
+  throw new Error('too many redirects');
 }

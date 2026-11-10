@@ -7,7 +7,7 @@ A personal remote MCP server: one home for my tools, reachable by any MCP client
 | `memo_write` | `{ text }` | `{ id }` |
 | `memo_search` | `{ query, limit? }` | `{ notes: [{ id, text, created_at }] }` |
 | `upload` | `{ filename, content_base64 \| text \| url, content_type? }` | `{ url, id, size, content_type }` |
-| `transcribe` | `{ url }` | `{ segments: [{ start, end, text }], duration, language }` (seconds) |
+| `transcribe` | `{ url }` | `{ segments: [{ start, text }] }` (start in seconds) |
 
 Every result is `structuredContent` matching the tool's `outputSchema`.
 

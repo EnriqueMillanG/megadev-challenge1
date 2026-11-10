@@ -30,10 +30,10 @@ const ok = (data) => ({ structuredContent: data, content: [{ type: 'text', text:
 const fail = (msg) => ({ isError: true, content: [{ type: 'text', text: msg }] });
 
 const Note = z.object({ id: z.string(), text: z.string(), created_at: z.string() });
-const Segment = z.object({ start: z.number().describe('Seconds from the start of the audio.'), end: z.number(), text: z.string() });
+const Segment = z.object({ start: z.number().describe('Seconds from the start of the audio.'), text: z.string() });
 
 function buildMcp() {
-  const mcp = new McpServer({ name: 'schema-first', version: '1.0.0', websiteUrl: PLAN_URL.href }, {
+  const mcp = new McpServer({ name: 'schema-first', version: '1.0.0' }, {
     instructions: `Personal tool server: notes (memo_write, memo_search), file hosting (upload) and speech to text (transcribe). Plan page: ${PLAN_URL.href}`,
   });
 
@@ -91,7 +91,7 @@ function buildMcp() {
       if (args.content_base64 !== undefined) data = Buffer.from(args.content_base64, 'base64');
       else if (args.text !== undefined) { data = Buffer.from(args.text, 'utf8'); type ??= 'text/plain; charset=utf-8'; }
       else { const r = await fetchPublic(args.url, { maxBytes: MAX_UPLOAD }); data = r.data; type ??= r.contentType; }
-    } catch (e) { return fail(`Could not read the file: ${e.message}`); }
+    } catch (e) { return fail(`Could not copy ${args.url}: ${e.message}`); }
     if (data.length > MAX_UPLOAD) return fail(`File is larger than ${MAX_UPLOAD} bytes.`);
     type = String(type || guessType(args.filename)).replace(/[\r\n]/g, '');
     const id = crypto.randomBytes(12).toString('base64url');
@@ -103,9 +103,9 @@ function buildMcp() {
 
   mcp.registerTool('transcribe', {
     title: 'Transcribe audio',
-    description: 'Turns the audio (or video) at a URL into timestamped text. Each segment has its start and end in seconds from the start of the clip. Runs whisper.cpp on this server.',
+    description: 'Turns the audio (or video) at a URL into timestamped text. Each segment has its start in seconds from the start of the clip. Runs whisper.cpp on this server.',
     inputSchema: z.object({ url: z.string().url().describe('Public http(s) URL of the audio or video, or a link from upload.') }),
-    outputSchema: z.object({ segments: z.array(Segment), duration: z.number().describe('Length of the audio in seconds.'), language: z.string() }),
+    outputSchema: z.object({ segments: z.array(Segment) }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ url }) => {
     let audio;
@@ -113,17 +113,34 @@ function buildMcp() {
       const own = ownFileId(url);
       if (own) {
         const f = await store.getBytes(`files/${own}`);
-        if (!f) return fail('No such uploaded file.');
+        if (!f) return fail(`Could not transcribe ${url}: no file was uploaded under that link.`);
         audio = f.data;
       } else {
         audio = (await fetchPublic(url, { maxBytes: 200 * 1024 * 1024 })).data;
       }
-    } catch (e) { return fail(`Could not download the audio: ${e.message}`); }
-    try { return ok(await transcribe(audio)); }
-    catch (e) { console.error('transcribe failed', e); return fail(`Could not transcribe: ${String(e.stderr || e.message).slice(0, 300)}`); }
+    } catch (e) { return fail(`Could not download ${url}: ${e.message}`); }
+    let result;
+    try { result = await transcribe(audio); }
+    catch (e) {
+      console.error('transcribe failed', url, e.stderr || e.message);
+      if (e.notAudio) return fail(`Could not transcribe ${url}: it is not audio or video (no audio stream could be decoded; got ${describeBytes(audio)}).`);
+      return fail(`Could not transcribe ${url}: speech recognition failed on this server.`);
+    }
+    // Text twin for clients without structuredContent: one "start text" line per segment.
+    return {
+      structuredContent: result,
+      content: [{ type: 'text', text: result.segments.map((s) => `${s.start} ${s.text}`).join('\n') }],
+    };
   });
 
   return mcp;
+}
+
+function describeBytes(buf) {
+  const head = buf.subarray(0, 64).toString('utf8').trimStart().toLowerCase();
+  if (head.startsWith('<!doctype html') || head.startsWith('<html')) return 'a web page (HTML)';
+  if (head.startsWith('{') || head.startsWith('[')) return 'JSON';
+  return `${buf.length} bytes of an unknown format`;
 }
 
 function ownFileId(url) {

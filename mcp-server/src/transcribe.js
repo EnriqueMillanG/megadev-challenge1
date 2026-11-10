@@ -25,19 +25,19 @@ async function doTranscribe(audio) {
   try {
     const input = path.join(dir, 'input'), wav = path.join(dir, 'audio.wav'), out = path.join(dir, 'out');
     await writeFile(input, audio);
-    await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', input, '-t', String(MAX_SECONDS), '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', wav], { timeout: 120_000 });
-    const { stdout: dur } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav]);
+    try {
+      await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', input, '-t', String(MAX_SECONDS), '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', wav], { timeout: 120_000 });
+    } catch (e) { throw Object.assign(new Error('not audio'), { notAudio: true, stderr: e.stderr }); }
     const threads = String(Math.max(1, Number(process.env.WHISPER_THREADS || 0) || (await import('node:os')).availableParallelism()));
     await run(WHISPER_BIN, ['-m', WHISPER_MODEL, '-f', wav, '-l', WHISPER_LANG, '-t', threads, '-oj', '-of', out, '-np'], { timeout: 900_000, maxBuffer: 64 * 1024 * 1024 });
     const json = JSON.parse(await readFile(out + '.json', 'utf8'));
     const segments = (json.transcription || [])
       .map((s) => ({
         start: round(s.offsets.from / 1000),
-        end: round(s.offsets.to / 1000),
         text: String(s.text).trim(),
       }))
       .filter((s) => s.text && !/^\[(BLANK_AUDIO|MUSIC|SILENCE)\]$/i.test(s.text));
-    return { segments, duration: round(Number(dur) || 0), language: json.result?.language || WHISPER_LANG };
+    return { segments };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
