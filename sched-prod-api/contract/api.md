@@ -28,3 +28,11 @@ This API reads `FEED_URL` (`GET`, no token). The feed also takes admin writes fo
 ## Anything else
 
 `404` with `{ "error": "not found" }`.
+
+## `GET /incidents/{id}`
+
+```json
+{ "incident": { "id": "INC-1234", "service": "booking-api", "summary": "…", "status": "open", "openedAt": "2026-11-11T02:43:00.000Z" } }
+```
+
+- One incident, with exactly the fields `GET /incidents` gives it. An id not in the feed answers `404`. (#1)
