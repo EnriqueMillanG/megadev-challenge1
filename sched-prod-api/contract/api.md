@@ -19,6 +19,10 @@ All answers are JSON. Times are ISO 8601, UTC.
 - Every incident production has, newest first, with exactly these fields.
 - `suggestions` is always an empty list: no suggestion is made, and there is no accept call (record 0007, #2).
 - Read from production's incident feed (`FEED_URL`).
+- `?status=open` or `?status=resolved` answers only incidents with that status; any other value answers
+  `400`. No `status` = all. (#4)
+- `?since=<ISO time>` answers only incidents opened after that time; a value that is not a time answers
+  `400`. No `since` = all. Both can be combined. (#5)
 
 ## Upstream: the production incident feed
 

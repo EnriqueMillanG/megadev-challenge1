@@ -21,7 +21,21 @@ export default {
     if (request.method !== 'GET') return notFound();
 
     if (url.pathname === '/incidents') {
-      return json({ incidents: await feed(env) });
+      let incidents = await feed(env);
+      // #4: ?status=open|resolved filters by status; no status = all.
+      const status = url.searchParams.get('status');
+      if (status !== null) {
+        if (!['open', 'resolved'].includes(status)) return json({ error: 'status must be open or resolved' }, 400);
+        incidents = incidents.filter((i) => i.status === status);
+      }
+      // #5: ?since=<ISO time> keeps incidents opened after that time; no since = all.
+      const since = url.searchParams.get('since');
+      if (since !== null) {
+        const t = Date.parse(since);
+        if (Number.isNaN(t)) return json({ error: 'since must be an ISO 8601 time' }, 400);
+        incidents = incidents.filter((i) => Date.parse(i.openedAt) > t);
+      }
+      return json({ incidents });
     }
 
     // #1: one incident by id, the same fields GET /incidents gives it.
