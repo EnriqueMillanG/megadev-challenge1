@@ -1,0 +1,8 @@
+{
+  "name": "status-night",
+  "private": true,
+  "type": "module",
+  "description": "Night status page for sched-prod (MEGA S03E01).",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=22" }
+}
