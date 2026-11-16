@@ -13,10 +13,11 @@ All answers are JSON. Times are ISO 8601, UTC.
 ## `GET /incidents`
 
 ```json
-{ "incidents": [ { "id": "INC-1234", "service": "booking-api", "summary": "…", "status": "open", "openedAt": "2026-11-11T02:43:00.000Z" } ] }
+{ "incidents": [ { "id": "INC-1234", "service": "booking-api", "summary": "…", "status": "open", "openedAt": "2026-11-11T02:43:00.000Z", "suggestions": [] } ] }
 ```
 
 - Every incident production has, newest first, with exactly these fields.
+- `suggestions` is always an empty list: no suggestion is made, and there is no accept call (record 0007, #2).
 - Read from production's incident feed (`FEED_URL`).
 
 ## Upstream: the production incident feed
@@ -32,7 +33,7 @@ This API reads `FEED_URL` (`GET`, no token). The feed also takes admin writes fo
 ## `GET /incidents/{id}`
 
 ```json
-{ "incident": { "id": "INC-1234", "service": "booking-api", "summary": "…", "status": "open", "openedAt": "2026-11-11T02:43:00.000Z" } }
+{ "incident": { "id": "INC-1234", "service": "booking-api", "summary": "…", "status": "open", "openedAt": "2026-11-11T02:43:00.000Z", "suggestions": [] } }
 ```
 
 - One incident, with exactly the fields `GET /incidents` gives it. An id not in the feed answers `404`. (#1)

@@ -8,7 +8,11 @@ async function feed(env) {
   const res = await fetch(env.FEED_URL);
   if (!res.ok) throw new Error(`feed answered ${res.status}`);
   const { incidents } = await res.json();
-  return [...incidents].sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt));
+  return [...incidents]
+    .sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt))
+    // Record 0007 (#2, owner chose option 2): every incident carries `suggestions`, always empty.
+    // No suggestion is made and there is no accept call.
+    .map((i) => ({ ...i, suggestions: [] }));
 }
 
 export default {
