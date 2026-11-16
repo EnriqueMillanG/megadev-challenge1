@@ -17,8 +17,14 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 // R5: the viewer's local time; day before month for EU locales. The full UTC value stays in datetime.
 const locale = navigator.language || 'en-GB';
-const timeFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-const localTime = (iso) => timeFmt.format(new Date(iso));
+const timeFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+function localTime(iso) {
+  const parts = timeFmt.formatToParts(new Date(iso));
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  const dayFirst = parts.findIndex((p) => p.type === 'day') < parts.findIndex((p) => p.type === 'month');
+  const date = dayFirst ? `${get('day')}/${get('month')}` : `${get('month')}/${get('day')}`;
+  return `${date} ${get('hour')}:${get('minute')}`;
+}
 
 function row(i) {
   const isAcked = acked.has(i.id);
