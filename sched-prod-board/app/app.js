@@ -6,12 +6,15 @@ const list = document.querySelector('[data-testid="incident-list"]');
 const loader = document.querySelector('[data-testid="loader"]');
 const empty = document.querySelector('[data-testid="empty"]');
 const status = document.querySelector('#status');
+const panel = document.querySelector('[data-testid="incident-panel"]');
 document.querySelector('[data-testid="build-sha"]').textContent = BUILD;
 
-// Every incident seen so far, by id. fetchIncidents() hands back only what is new since the last cursor,
-// so each refresh adds to this map instead of replacing the list (R1, R4).
+// Every incident on the board, by id, and its row element. Rows are only ever added: a refresh inserts the
+// new ones in place and never rebuilds or removes a row, so nothing moves out from under the pointer except
+// by the new row landing at the top (R1, R4).
 const incidents = new Map();
-const acked = new Map(); // id -> ackedAt (R2): survives every refresh
+const rows = new Map();
+const acked = new Map(); // id -> ackedAt
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -26,47 +29,102 @@ function localTime(iso) {
   return `${date} ${get('hour')}:${get('minute')}`;
 }
 
-function row(i) {
-  const isAcked = acked.has(i.id);
-  return `<li data-testid="incident-row" data-id="${esc(i.id)}" class="row ${esc(i.severity)}${isAcked ? ' is-acked' : ''}">
-    <span class="id">${esc(i.id)}</span>
+const newestFirst = (a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt);
+
+function makeRow(i) {
+  const li = document.createElement('li');
+  li.setAttribute('data-testid', 'incident-row');
+  li.dataset.id = i.id;
+  li.className = `row ${i.severity}`;
+  li.tabIndex = 0;
+  li.setAttribute('role', 'button');
+  li.setAttribute('aria-label', `Open ${i.id}`);
+  li.innerHTML = `<span class="id">${esc(i.id)}</span>
     <span class="sev">${esc(i.severity)}</span>
     <span class="what">${esc(i.service)} · ${esc(i.region)} · ${esc(i.summary)}</span>
     <time datetime="${esc(i.openedAt)}" title="${esc(i.openedAt)}">${esc(localTime(i.openedAt))}</time>
-    ${isAcked
-      ? `<span data-testid="acked" class="acked">Acked ${esc(localTime(acked.get(i.id)))}</span>`
-      : `<button data-testid="ack" type="button" data-id="${esc(i.id)}">Ack</button>`}
-  </li>`;
+    <span class="state"></span>`;
+  return li;
 }
 
-function render() {
-  const sorted = [...incidents.values()].sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt)); // newest first (R1)
-  list.innerHTML = sorted.map(row).join('');
-  empty.hidden = sorted.length > 0;
+function markAcked(id) {
+  const li = rows.get(id);
+  if (!li || li.querySelector('[data-testid="acked"]')) return;
+  li.classList.add('is-acked');
+  li.querySelector('.state').innerHTML = `<span data-testid="acked" class="acked">Acked ${esc(localTime(acked.get(id)))}</span>`;
+}
+
+// Adds the incidents not on the board yet, each at its place in newest-first order.
+function addNew(list_) {
+  const fresh = list_.filter((i) => !incidents.has(i.id)).sort(newestFirst);
+  for (const i of fresh) {
+    incidents.set(i.id, i);
+    const li = makeRow(i);
+    rows.set(i.id, li);
+    const after = [...list.children].find((r) => Date.parse(incidents.get(r.dataset.id).openedAt) < Date.parse(i.openedAt));
+    list.insertBefore(li, after ?? null);
+  }
+  empty.hidden = incidents.size > 0;
 }
 
 async function refresh() {
   const page = await fetchIncidents();
-  for (const i of page.incidents) incidents.set(i.id, i);
-  return page;
+  addNew(page.incidents);
 }
 
-list.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-testid="ack"]');
+// --- the incident panel: a row opens it; Ack lives here, tied to the incident's id, not to a position ---
+function openPanel(id) {
+  const i = incidents.get(id);
+  if (!i) return;
+  panel.dataset.id = id;
+  const isAcked = acked.has(id);
+  panel.innerHTML = `<h2>${esc(i.id)}</h2>
+    <p class="sev">${esc(i.severity)} · ${esc(i.service)} · ${esc(i.region)}</p>
+    <p>${esc(i.summary)}</p>
+    <p class="when">Opened <time datetime="${esc(i.openedAt)}">${esc(localTime(i.openedAt))}</time></p>
+    ${isAcked
+      ? `<p class="acked">Acked ${esc(localTime(acked.get(id)))}</p>`
+      : `<button data-testid="panel-ack" type="button">Ack ${esc(i.id)}</button>`}
+    <button class="close" type="button" aria-label="Close panel">Close</button>
+    <p class="panel-status" role="status"></p>`;
+  panel.hidden = false;
+  for (const r of rows.values()) r.classList.toggle('is-open', r.dataset.id === id);
+}
+
+function closePanel() {
+  panel.hidden = true;
+  delete panel.dataset.id;
+  for (const r of rows.values()) r.classList.remove('is-open');
+}
+
+list.addEventListener('click', (e) => {
+  const li = e.target.closest('[data-testid="incident-row"]');
+  if (li) openPanel(li.dataset.id);
+});
+list.addEventListener('keydown', (e) => {
+  const li = e.target.closest('[data-testid="incident-row"]');
+  if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openPanel(li.dataset.id); }
+});
+
+panel.addEventListener('click', async (e) => {
+  if (e.target.closest('.close')) return closePanel();
+  const btn = e.target.closest('[data-testid="panel-ack"]');
   if (!btn) return;
+  const id = panel.dataset.id; // the incident the panel names, never a position in the list
   btn.disabled = true;
   btn.textContent = 'Acking…';
   try {
-    const reply = await ack(btn.dataset.id); // R2
+    const reply = await ack(id); // R2
     acked.set(reply.id, reply.ackedAt);
-    status.textContent = '';
-    render();
+    markAcked(reply.id);
+    if (panel.dataset.id === id) openPanel(id);
   } catch (err) {
     btn.disabled = false;
-    btn.textContent = 'Ack';
-    status.textContent = `Ack failed: ${err.message}`;
+    btn.textContent = `Ack ${id}`;
+    panel.querySelector('.panel-status').textContent = `Ack failed: ${err.message}`;
   }
 });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) closePanel(); });
 
 // R3: loader until the first answer is on screen.
 try {
@@ -76,7 +134,7 @@ try {
 }
 loader.remove();
 board.setAttribute('aria-busy', 'false');
-render();
+empty.hidden = incidents.size > 0;
 
 // R4: refresh every 2 seconds while the board is open; one request at a time.
 let busy = false;
@@ -84,8 +142,7 @@ setInterval(async () => {
   if (busy) return;
   busy = true;
   try {
-    const page = await refresh();
-    if (page.incidents.length) render();
+    await refresh();
     status.textContent = '';
   } catch (err) {
     status.textContent = `Refresh failed, retrying: ${err.message}`;
